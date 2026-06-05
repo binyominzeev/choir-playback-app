@@ -1,3 +1,16 @@
 {
-  "songs": []
+  "songs": [
+    {
+      "id": "jedid-nefes",
+      "title": "Jedid Nefes",
+      "composer": "Yitzchok Alster",
+      "midiUrl": "/songs/jedid.mid"
+    },
+    {
+      "id": "lemaan-achaj",
+      "title": "Lemaan achai",
+      "composer": "Shlomo Carlebach",
+      "midiUrl": "/songs/lemaan.mid"
+    }
+  ]
 }

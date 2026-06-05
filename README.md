@@ -2,6 +2,12 @@
 
 Responsive Progressive Web App for choir practice with multi-track piano MIDI playback.
 
+## Audio notes
+
+The app's current instrument presets use sampled instruments via `smplr`.
+`Simple Piano` uses the Splendid Grand Piano sample set, which the source project describes as public-domain AKAI piano samples.
+`Vibraphone`, `Xylophone`, and `Violin` use `smplr`'s mallet and Versilian-backed sampled instrument paths.
+
 ## Development
 
 ```bash

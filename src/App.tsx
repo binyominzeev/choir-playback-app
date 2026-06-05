@@ -1,20 +1,49 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlaybackControls } from './components/PlaybackControls'
+import { InstrumentSelector } from './components/InstrumentSelector'
 import { SongLibrary } from './components/SongLibrary'
 import { TempoControl } from './components/TempoControl'
 import { VoiceSelector } from './components/VoiceSelector'
 import { loadMidiFromUrl } from './services/midiLoader'
-import { MidiPlaybackEngine } from './services/midiPlaybackEngine'
+import {
+  DEFAULT_FOCUS_BLEND,
+  DEFAULT_INSTRUMENT_PRESET_ID,
+  INSTRUMENT_PRESETS,
+  MidiPlaybackEngine,
+} from './services/midiPlaybackEngine'
 import { fetchSongLibrary } from './services/songLibrary'
+import type { Midi } from '@tonejs/midi'
+import type { InstrumentPresetId } from './services/midiPlaybackEngine'
 import type { MidiSongData } from './types/midi'
 import type { Song } from './types/song'
 
 const STORAGE_KEYS = {
   songId: 'choir:lastSongId',
   voiceId: 'choir:lastVoiceId',
+  instrumentId: 'choir:lastInstrumentId',
+  focusBlend: 'choir:focusBlend',
 }
 
 type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused'
+
+function getStoredInstrumentId(): InstrumentPresetId {
+  const storedInstrumentId = localStorage.getItem(STORAGE_KEYS.instrumentId)
+  const matchingPreset = INSTRUMENT_PRESETS.find((preset) => preset.id === storedInstrumentId)
+  return matchingPreset?.id ?? DEFAULT_INSTRUMENT_PRESET_ID
+}
+
+function getInstrumentName(instrumentId: InstrumentPresetId): string {
+  return INSTRUMENT_PRESETS.find((preset) => preset.id === instrumentId)?.name ?? 'Selected instrument'
+}
+
+function getStoredFocusBlend(): number {
+  const storedValue = Number(localStorage.getItem(STORAGE_KEYS.focusBlend))
+  if (!Number.isFinite(storedValue)) {
+    return DEFAULT_FOCUS_BLEND
+  }
+
+  return Math.min(100, Math.max(0, Math.round(storedValue)))
+}
 
 function formatTime(seconds: number): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0
@@ -25,6 +54,7 @@ function formatTime(seconds: number): string {
 
 function App() {
   const playbackEngineRef = useRef<MidiPlaybackEngine>(new MidiPlaybackEngine())
+  const loadedMidiRef = useRef<Midi | null>(null)
 
   const [songs, setSongs] = useState<Song[]>([])
   const [search, setSearch] = useState('')
@@ -34,6 +64,10 @@ function App() {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(
     localStorage.getItem(STORAGE_KEYS.voiceId),
   )
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState<InstrumentPresetId>(
+    getStoredInstrumentId,
+  )
+  const [focusBlendPercent, setFocusBlendPercent] = useState(getStoredFocusBlend)
   const [songData, setSongData] = useState<MidiSongData | null>(null)
   const [tempoPercent, setTempoPercent] = useState(100)
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle')
@@ -92,6 +126,14 @@ function App() {
   }, [selectedVoiceId])
 
   useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.instrumentId, selectedInstrumentId)
+  }, [selectedInstrumentId])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.focusBlend, String(focusBlendPercent))
+  }, [focusBlendPercent])
+
+  useEffect(() => {
     if (!selectedSong) {
       return
     }
@@ -104,7 +146,7 @@ function App() {
         setMessage(`Loading ${selectedSong.title}...`)
 
         const loaded = await loadMidiFromUrl(selectedSong.midiUrl)
-        await engine.initializeFromMidi(loaded.midi, loaded.songData)
+        loadedMidiRef.current = loaded.midi
 
         const storedVoiceId = localStorage.getItem(STORAGE_KEYS.voiceId)
         const hasStoredVoice = loaded.songData.voices.some((voice) => voice.id === storedVoiceId)
@@ -112,16 +154,31 @@ function App() {
 
         setSongData(loaded.songData)
         setSelectedVoiceId(nextVoice)
-        engine.setFocusVoice(nextVoice)
 
         const total = loaded.songData.durationSeconds
         setProgress(0)
         setCurrentTime(formatTime(0))
         setTotalTime(formatTime(total))
+
+        try {
+          engine.setInstrumentPreset(selectedInstrumentId)
+          engine.setFocusBlendPercent(focusBlendPercent)
+          await engine.initializeFromMidi(loaded.midi, loaded.songData)
+          engine.setTempoPercent(tempoPercent)
+          engine.setFocusVoice(nextVoice)
+          setMessage(`Loaded ${selectedSong.title}`)
+        } catch (error) {
+          console.error('Audio engine initialization failed', error)
+          setMessage(`Loaded ${selectedSong.title}, but audio could not be initialized yet.`)
+        }
+
         setPlaybackStatus('idle')
-        setMessage(`Loaded ${selectedSong.title}`)
-      } catch {
+      } catch (error) {
+        console.error('MIDI loading failed', error)
+        loadedMidiRef.current = null
+        engine.dispose()
         setSongData(null)
+        setSelectedVoiceId(null)
         setPlaybackStatus('idle')
         setMessage('Could not load that MIDI file. Please try another song.')
       }
@@ -139,6 +196,39 @@ function App() {
     const engine = playbackEngineRef.current
     engine.setFocusVoice(selectedVoiceId)
   }, [selectedVoiceId])
+
+  useEffect(() => {
+    const engine = playbackEngineRef.current
+    engine.setFocusBlendPercent(focusBlendPercent)
+    engine.setFocusVoice(selectedVoiceId)
+  }, [focusBlendPercent, selectedVoiceId])
+
+  useEffect(() => {
+    if (!songData || !loadedMidiRef.current) {
+      return
+    }
+
+    const engine = playbackEngineRef.current
+    const loadedMidi = loadedMidiRef.current
+
+    void (async () => {
+      try {
+        engine.setInstrumentPreset(selectedInstrumentId)
+        engine.setFocusBlendPercent(focusBlendPercent)
+        await engine.initializeFromMidi(loadedMidi, songData)
+        engine.setTempoPercent(tempoPercent)
+        engine.setFocusVoice(selectedVoiceId)
+        setPlaybackStatus('idle')
+        setProgress(0)
+        setCurrentTime(formatTime(0))
+        setTotalTime(formatTime(engine.getTotalDurationSeconds(tempoPercent)))
+        setMessage(`Instrument changed to ${getInstrumentName(selectedInstrumentId)}.`)
+      } catch (error) {
+        console.error('Instrument change failed', error)
+        setMessage('The selected instrument could not be applied.')
+      }
+    })()
+  }, [selectedInstrumentId])
 
   useEffect(() => {
     let frameId = 0
@@ -177,9 +267,17 @@ function App() {
   }, [])
 
   const handlePlay = () => {
-    playbackEngineRef.current.play()
-    setPlaybackStatus('playing')
-    setMessage('Playback started')
+    void (async () => {
+      try {
+        await playbackEngineRef.current.play()
+        setPlaybackStatus('playing')
+        setMessage('Playback started')
+      } catch (error) {
+        console.error('Playback start failed', error)
+        setPlaybackStatus('idle')
+        setMessage('Audio playback could not start. Try pressing Play again.')
+      }
+    })()
   }
 
   const handlePause = () => {
@@ -234,6 +332,12 @@ function App() {
             selectedVoice={selectedVoiceId}
             onSelectVoice={setSelectedVoiceId}
           />
+
+          <InstrumentSelector
+            instruments={INSTRUMENT_PRESETS}
+            selectedInstrument={selectedInstrumentId}
+            onSelectInstrument={setSelectedInstrumentId}
+          />
         </div>
 
         <div className="space-y-4">
@@ -251,19 +355,25 @@ function App() {
           <TempoControl value={tempoPercent} onChange={setTempoPercent} />
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900">Detected tracks</h2>
-            <ul className="space-y-1 text-sm text-slate-700">
-              {(songData?.voices ?? []).map((voice) => (
-                <li
-                  key={voice.id}
-                  className={`rounded-md px-2 py-1 ${
-                    selectedVoiceId === voice.id ? 'bg-indigo-50 font-semibold text-indigo-700' : ''
-                  }`}
-                >
-                  {voice.name}
-                </li>
-              ))}
-            </ul>
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Focus Strength</h2>
+            <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="focus-blend-range">
+              {selectedVoiceId ? `${focusBlendPercent}% background voices while focused` : 'Select a voice focus to use this control'}
+            </label>
+            <input
+              id="focus-blend-range"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={focusBlendPercent}
+              onChange={(event) => setFocusBlendPercent(Number(event.target.value))}
+              disabled={!selectedVoiceId}
+              className="w-full disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <div className="mt-2 flex justify-between text-xs text-slate-500">
+              <span>Only focused voice</span>
+              <span>Current default mix</span>
+            </div>
           </section>
         </div>
       </div>
