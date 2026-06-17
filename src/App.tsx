@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlaybackControls } from './components/PlaybackControls'
-import { InstrumentSelector } from './components/InstrumentSelector'
+import { Metronome } from './components/Metronome'
 import { SongLibrary } from './components/SongLibrary'
 import { TempoControl } from './components/TempoControl'
 import { VoiceSelector } from './components/VoiceSelector'
@@ -64,9 +64,7 @@ function App() {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(
     localStorage.getItem(STORAGE_KEYS.voiceId),
   )
-  const [selectedInstrumentId, setSelectedInstrumentId] = useState<InstrumentPresetId>(
-    getStoredInstrumentId,
-  )
+  const [selectedInstrumentId] = useState<InstrumentPresetId>(getStoredInstrumentId)
   const [focusBlendPercent, setFocusBlendPercent] = useState(getStoredFocusBlend)
   const [songData, setSongData] = useState<MidiSongData | null>(null)
   const [tempoPercent, setTempoPercent] = useState(100)
@@ -125,9 +123,7 @@ function App() {
     localStorage.setItem(STORAGE_KEYS.voiceId, selectedVoiceId)
   }, [selectedVoiceId])
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.instrumentId, selectedInstrumentId)
-  }, [selectedInstrumentId])
+  // instrument remains the default piano; no UI to change it anymore
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.focusBlend, String(focusBlendPercent))
@@ -213,6 +209,7 @@ function App() {
 
     void (async () => {
       try {
+        // ensure engine uses default instrument and current settings
         engine.setInstrumentPreset(selectedInstrumentId)
         engine.setFocusBlendPercent(focusBlendPercent)
         await engine.initializeFromMidi(loadedMidi, songData)
@@ -222,10 +219,9 @@ function App() {
         setProgress(0)
         setCurrentTime(formatTime(0))
         setTotalTime(formatTime(engine.getTotalDurationSeconds(tempoPercent)))
-        setMessage(`Instrument changed to ${getInstrumentName(selectedInstrumentId)}.`)
       } catch (error) {
-        console.error('Instrument change failed', error)
-        setMessage('The selected instrument could not be applied.')
+        console.error('Instrument init failed', error)
+        setMessage('Audio initialization failed for the selected song.')
       }
     })()
   }, [selectedInstrumentId])
@@ -333,11 +329,7 @@ function App() {
             onSelectVoice={setSelectedVoiceId}
           />
 
-          <InstrumentSelector
-            instruments={INSTRUMENT_PRESETS}
-            selectedInstrument={selectedInstrumentId}
-            onSelectInstrument={setSelectedInstrumentId}
-          />
+          {/* Instrument selection removed — default Piano is always used. */}
         </div>
 
         <div className="space-y-4">
@@ -353,6 +345,13 @@ function App() {
           />
 
           <TempoControl value={tempoPercent} onChange={setTempoPercent} />
+
+            {/* BPM: assume 120 is app's base 100% tempo; pass sampleUrl to use an external click file if available */}
+            <Metronome
+              bpm={Math.round((tempoPercent / 100) * 120)}
+              sampleUrl={null}
+              beatsPerBar={4}
+            />
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="mb-3 text-lg font-semibold text-slate-900">Focus Strength</h2>

@@ -7,10 +7,10 @@
       "midiUrl": "/songs/jedid.mid"
     },
     {
-      "id": "lemaan-achaj",
-      "title": "Lemaan achai",
-      "composer": "Shlomo Carlebach",
-      "midiUrl": "/songs/lemaan.mid"
+      "id": "adon-olam",
+      "title": "Adon Olam",
+      "composer": "Ran Eliran",
+      "midiUrl": "/songs/adon.mid"
     }
   ]
 }
