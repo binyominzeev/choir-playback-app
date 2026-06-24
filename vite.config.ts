@@ -30,12 +30,27 @@ export default defineConfig({
       workbox: {
         runtimeCaching: [
           {
-            urlPattern: /\/songs\/.*\.(mid|midi|json)$/,
-            handler: 'CacheFirst',
+            urlPattern: /\/songs\/index\.json$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'song-library-cache',
+              networkTimeoutSeconds: 5,
+              expiration: {
+                maxEntries: 3,
+                maxAgeSeconds: 60 * 5,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: /\/songs\/.*\.(mid|midi)$/,
+            handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'song-assets-cache',
               expiration: {
-                maxEntries: 20,
+                maxEntries: 30,
                 maxAgeSeconds: 60 * 60 * 24 * 14,
               },
               cacheableResponse: {

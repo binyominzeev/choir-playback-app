@@ -32,10 +32,6 @@ function getStoredInstrumentId(): InstrumentPresetId {
   return matchingPreset?.id ?? DEFAULT_INSTRUMENT_PRESET_ID
 }
 
-function getInstrumentName(instrumentId: InstrumentPresetId): string {
-  return INSTRUMENT_PRESETS.find((preset) => preset.id === instrumentId)?.name ?? 'Selected instrument'
-}
-
 function getStoredFocusBlend(): number {
   const storedValue = Number(localStorage.getItem(STORAGE_KEYS.focusBlend))
   if (!Number.isFinite(storedValue)) {
